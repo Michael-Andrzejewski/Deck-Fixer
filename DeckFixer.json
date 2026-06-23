@@ -1,0 +1,15 @@
+{
+  "id": "DeckFixer",
+  "name": "Deck Fixer",
+  "display_name": "Deck Fixer",
+  "author": ["Soareverix"],
+  "description": "A deck that merges any combination of other decks. Toggle decks on or off in a compact checklist and play them all at once.",
+  "prefix": "df",
+  "main_file": "DeckFixer.lua",
+  "badge_colour": "2E8B57",
+  "badge_text_colour": "FFFFFF",
+  "version": "0.1.0",
+  "dependencies": [
+    "Steamodded (>=1.0.0~BETA)"
+  ]
+}
