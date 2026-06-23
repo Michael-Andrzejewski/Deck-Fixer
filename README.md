@@ -6,11 +6,14 @@ A Balatro deck that **merges any combination of other decks** (vanilla or modded
 
 ## How it works
 
-For every deck you tick, Deck Fixer applies, at run start:
+For every deck you tick, Deck Fixer builds a real `Back` for that deck and runs its actual `apply_to_run()` path at run start. That is the exact code Balatro runs when you pick the deck, so everything integrates with no per-deck wiring:
 
-- **Config deltas** summed/merged into your run: extra hands, discards, dollars, joker slots, hand size, consumable slots, reroll discount, no-face cards, erratic ranks/suits, ante scaling, spectral rate, booster count, no-interest, and per-hand / per-discard money bonuses.
-- **Starting content** queued the same way vanilla decks do it: starting jokers, consumables, vouchers, and deck-wide editions.
-- A modded deck's own `apply()` and `calculate()` are called best-effort, so most modded decks come along for the ride.
+- **All config fields** (vanilla and any Steamodded or modded extension): hands, discards, dollars, joker slots, hand size, consumable slots, reroll discount, no-face cards, erratic ranks/suits, ante scaling, spectral rate, boosters, no-interest, per-hand/discard money, and anything new a deck adds.
+- **The deck's own `apply()`** function (how most modded decks do their work).
+- **Name-gated vanilla cases** like Checkered's suit swap, for free.
+- Scoring-time `calculate()` effects are chained from Deck Fixer's own, and Plasma's equalize is re-implemented.
+
+Each deck's application runs inside a `pcall`, so one misbehaving deck can't break the run. New modded decks appear in the checklist automatically and merge through the same path.
 
 ## Requirements
 
@@ -27,8 +30,11 @@ git clone https://github.com/Michael-Andrzejewski/Deck-Fixer.git DeckFixer
 
 ## Known limitations (v1)
 
-- Bean's brief was "doesn't have to work with everything," and this is scoped to match.
-- Name-gated vanilla effects merge only where re-implemented here. **Checkered** (suit swap) and **Plasma** (chips/mult equalize) are handled; **Anaglyph**'s post-boss double-tag is not.
+Bean's brief was "doesn't have to work with everything," and this is scoped to match.
+
+- **Self-gating decks can't merge.** Some mods gate their behaviour on "is my deck the selected one" (checking `G.GAME.selected_back`). Those self-disable when merged, because the selected deck is Deck Fixer. This is inherent to any deck merger, not specific to this mod.
+- **Name-gated scoring effects** merge only where re-implemented. **Plasma** (chips/mult equalize) is handled; **Anaglyph**'s post-boss double-tag is not.
 - If several `calculate`-based decks are merged, the first to return a result for a given context wins.
+- A deck that **hard-sets** an absolute value (e.g. forces a specific starting dollar amount) will overwrite rather than add.
 - Merging is applied on a **new run**. Continuing a save uses whatever was baked in when the run started.
 - The deck art is a placeholder for now.
