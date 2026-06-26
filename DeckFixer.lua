@@ -113,11 +113,21 @@ SMODS.Back({
 
     calculate = function(self, back, context)
         -- Scoring-time effects: chain each ticked deck's calculate; the
-        -- first to return a result for this context wins.
+        -- first to return a result for this context wins. Steamodded's
+        -- Back wrapper prefers center.calculate but falls back to the
+        -- deprecated center.trigger_effect (different arity: it takes
+        -- (center, args), not (center, back, args)). Some modded decks
+        -- (e.g. Silly Decks' Busted) still use trigger_effect, so we
+        -- mirror that fallback here.
         for _, key in ipairs(df_enabled_decks()) do
             local center = G.P_CENTERS[key]
-            if center and type(center.calculate) == 'function' then
-                local ok, ret = pcall(function() return center.calculate(center, back, context) end)
+            if center then
+                local ok, ret
+                if type(center.calculate) == 'function' then
+                    ok, ret = pcall(function() return center.calculate(center, back, context) end)
+                elseif type(center.trigger_effect) == 'function' then
+                    ok, ret = pcall(function() return center.trigger_effect(center, context) end)
+                end
                 if ok and ret then return ret end
             end
         end
@@ -134,58 +144,95 @@ SMODS.Back({
 })
 
 ----------------------------------------------------------------------
--- Config tab: compact checklist of every deck
+-- Config tab: simple Clear / Randomize / Select-All controls
+--
+-- With 100+ modded decks a full checklist is unusable, so the tab is
+-- driven by buttons plus a live summary line. Randomize is the main
+-- workflow for "play a random assortment". The summary text re-reads its
+-- ref each frame, so it updates instantly when a button is pressed.
 ----------------------------------------------------------------------
+
+local df_ui = { summary = 'Selected: 0 decks' }
+
+-- Keys of every registered back except Deck Fixer itself.
+local function df_all_deck_keys()
+    local keys = {}
+    for _, center in ipairs(G.P_CENTER_POOLS.Back or {}) do
+        if center.key and center.key ~= DF_KEY then keys[#keys + 1] = center.key end
+    end
+    return keys
+end
+
+local function df_refresh_summary()
+    local sel = df_enabled_decks()
+    local n = #sel
+    if n == 0 then
+        df_ui.summary = 'Selected: 0 decks'
+        return
+    end
+    local names = {}
+    for i = 1, math.min(3, n) do
+        local c = G.P_CENTERS[sel[i]]
+        names[i] = (c and c.name) or sel[i]
+    end
+    local txt = ('Selected %d: %s'):format(n, table.concat(names, ', '))
+    if n > 3 then txt = txt .. (', +%d more'):format(n - 3) end
+    df_ui.summary = txt
+end
+
+G.FUNCS.df_clear = function()
+    df_cfg().decks = {}
+    df_refresh_summary()
+end
+
+G.FUNCS.df_select_all = function()
+    local cfg = df_cfg()
+    for _, key in ipairs(df_all_deck_keys()) do cfg.decks[key] = true end
+    df_refresh_summary()
+end
+
+G.FUNCS.df_randomize = function()
+    local cfg = df_cfg()
+    cfg.decks = {}
+    local keys = df_all_deck_keys()
+    -- Fisher-Yates shuffle, then keep a random 3..8.
+    for i = #keys, 2, -1 do
+        local j = math.random(i)
+        keys[i], keys[j] = keys[j], keys[i]
+    end
+    local count = math.min(#keys, math.random(3, 8))
+    for i = 1, count do cfg.decks[keys[i]] = true end
+    df_refresh_summary()
+end
 
 if df_mod then
     df_mod.config_tab = function()
-        local cfg = df_cfg()
-
-        -- Collect every registered back except Deck Fixer itself. This
-        -- list is built fresh each time the tab opens, so any newly
-        -- installed modded deck shows up automatically.
-        local decks = {}
-        for _, center in ipairs(G.P_CENTER_POOLS.Back or {}) do
-            if center.key and center.key ~= DF_KEY then
-                decks[#decks + 1] = center
-            end
+        df_refresh_summary()
+        local function btn(label, func, colour)
+            return UIBox_button({ label = { label }, button = func, colour = colour, minw = 2.4, scale = 0.42 })
         end
-        table.sort(decks, function(a, b)
-            return (a.name or a.key) < (b.name or b.key)
-        end)
-
-        local function cell(center)
-            return { n = G.UIT.C, config = { align = 'cl', padding = 0.03, minw = 3.0 }, nodes = {
-                create_toggle({
-                    label = center.name or center.key,
-                    label_scale = 0.28,
-                    w = 1.4,
-                    ref_table = cfg.decks,
-                    ref_value = center.key,
-                }),
-            } }
-        end
-
-        -- Three columns per row to stay compact even with many modded decks.
-        local rows = {}
-        for i = 1, #decks, 3 do
-            local nodes = {}
-            for j = i, math.min(i + 2, #decks) do
-                nodes[#nodes + 1] = cell(decks[j])
-            end
-            rows[#rows + 1] = { n = G.UIT.R, config = { align = 'cm', padding = 0.008 }, nodes = nodes }
-        end
-
-        local body = {
-            { n = G.UIT.R, config = { align = 'cm', padding = 0.03 }, nodes = {
-                { n = G.UIT.T, config = {
-                    text = 'Tick the decks to merge, then play Deck Fixer:',
-                    scale = 0.34, colour = G.C.UI.TEXT_LIGHT,
+        return {
+            n = G.UIT.ROOT,
+            config = { align = 'cm', padding = 0.08, colour = G.C.CLEAR },
+            nodes = {
+                { n = G.UIT.R, config = { align = 'cm', padding = 0.06 }, nodes = {
+                    { n = G.UIT.T, config = {
+                        ref_table = df_ui, ref_value = 'summary',
+                        scale = 0.42, colour = G.C.UI.TEXT_LIGHT,
+                    } },
                 } },
-            } },
+                { n = G.UIT.R, config = { align = 'cm', padding = 0.08 }, nodes = {
+                    btn('Clear', 'df_clear', G.C.RED),
+                    btn('Randomize', 'df_randomize', G.C.BLUE),
+                    btn('Select All', 'df_select_all', G.C.GREEN),
+                } },
+                { n = G.UIT.R, config = { align = 'cm', padding = 0.04 }, nodes = {
+                    { n = G.UIT.T, config = {
+                        text = 'Randomize picks 3 to 8 decks. Then play Deck Fixer.',
+                        scale = 0.3, colour = G.C.UI.TEXT_LIGHT,
+                    } },
+                } },
+            },
         }
-        for _, r in ipairs(rows) do body[#body + 1] = r end
-
-        return { n = G.UIT.ROOT, config = { align = 'cm', padding = 0.02, colour = G.C.CLEAR }, nodes = body }
     end
 end

@@ -2,7 +2,15 @@
 
 By **Soareverix**.
 
-A Balatro deck that **merges any combination of other decks** (vanilla or modded) into one. Open the mod config, tick the decks you want in the compact checklist, then play the **Deck Fixer** deck to get all of their effects at once.
+A Balatro deck that **merges any combination of other decks** (vanilla or modded) into one. Open the mod config, pick your decks, then play the **Deck Fixer** deck to get all of their effects at once.
+
+## Picking decks
+
+The config tab keeps it simple with three buttons and a live summary of what is selected:
+
+- **Randomize** — selects a random 3 to 8 of your installed decks (the main way to play a surprise assortment; press again to reroll).
+- **Select All** — merge everything you have.
+- **Clear** — start over.
 
 ## How it works
 
@@ -38,3 +46,18 @@ Bean's brief was "doesn't have to work with everything," and this is scoped to m
 - A deck that **hard-sets** an absolute value (e.g. forces a specific starting dollar amount) will overwrite rather than add.
 - Merging is applied on a **new run**. Continuing a save uses whatever was baked in when the run started.
 - The deck art is a placeholder for now.
+
+## Tested with
+
+Vetted against these popular deck packs (109 decks total). The large majority merge correctly; the exceptions below are all the inherent "effect only fires when this deck is selected" type, and none of them crash the run (a non-mergeable deck simply no-ops).
+
+| Pack | Decks | Result |
+|---|---|---|
+| Vanilla+ Decks | 3 | All merge |
+| Shenanigans's Decks | 31 | All merge (Hieroglyph loses only its sleeve-paired bonus) |
+| Silly Decks | 14 | Merge, except **Casino** (needs a run-start snapshot) |
+| Ruina Decks | 9 | Merge, except **Hokma** (Lovely patch gated on selection) |
+| Joshi's Decks | 8 | Merge, except **Legendary** (selection-gated hooks) |
+| Too Many Decks | 42 | Merge, except **invisible, throwback, champ** and the gated parts of **tds, Joker, thereisnogod** |
+
+Decks that hard-set a shop rate or rarity (e.g. some of Joshi's) overwrite rather than stack when combined with each other.
