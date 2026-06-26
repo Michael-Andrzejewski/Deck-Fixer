@@ -6,13 +6,13 @@ A Balatro deck that **merges any combination of other decks** (vanilla or modded
 
 ## Picking decks
 
-The mod config opens on a **Config** page with three buttons and a live summary of what is selected:
+The mod config is a single page with a `< Controls / Decks N >` selector at the bottom (the same paging the in-game collection uses).
 
-- **Randomize** — selects a random 3 to 8 of your installed decks (the quick way to play a surprise assortment; press again to reroll).
-- **Select All** — merge everything you have.
-- **Clear** — start over.
-
-For hand-picking, the tabs after Config (**Decks 1-24**, **Decks 25-48**, ...) list every installed deck as an individual checkbox, paged so the list stays readable no matter how many deck mods you have. Toggles, Randomize, and the buttons all stay in sync.
+- **Controls** (first page): three buttons and a live summary of what is selected.
+  - **Randomize** — selects a random 3 to 8 of your installed decks (the quick way to play a surprise assortment; press again to reroll).
+  - **Select All** — merge everything you have.
+  - **Clear** — start over.
+- **Decks 1, Decks 2, ...**: grids of individual deck checkboxes, 18 per page. Page through them to hand-pick. Toggles, Randomize, and the buttons all stay in sync.
 
 ## How it works
 
