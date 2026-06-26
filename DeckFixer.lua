@@ -205,7 +205,59 @@ G.FUNCS.df_randomize = function()
     df_refresh_summary()
 end
 
+----------------------------------------------------------------------
+-- Paged deck toggles (one tab per page, after the Config controls tab)
+----------------------------------------------------------------------
+
+local DF_PER_PAGE = 24   -- decks per page (3 columns x 8 rows)
+local DF_COLS     = 3
+
+-- All deck centers except Deck Fixer, sorted by name. Rebuilt each time
+-- the config UI opens, so newly installed modded decks appear on their own.
+local function df_deck_centers()
+    local decks = {}
+    for _, center in ipairs(G.P_CENTER_POOLS.Back or {}) do
+        if center.key and center.key ~= DF_KEY then decks[#decks + 1] = center end
+    end
+    table.sort(decks, function(a, b) return (a.name or a.key) < (b.name or b.key) end)
+    return decks
+end
+
+local function df_deck_toggle(center)
+    return { n = G.UIT.C, config = { align = 'cl', padding = 0.04, minw = 3.3 }, nodes = {
+        create_toggle({
+            label = center.name or center.key,
+            label_scale = 0.3,
+            w = 1.2,
+            ref_table = df_cfg().decks,
+            ref_value = center.key,
+        }),
+    } }
+end
+
+-- One page of deck toggles (1-indexed), laid out in DF_COLS columns.
+local function df_deck_page(page)
+    local decks = df_deck_centers()
+    local start_i = (page - 1) * DF_PER_PAGE + 1
+    local end_i = math.min(start_i + DF_PER_PAGE - 1, #decks)
+    local rows = {}
+    for i = start_i, end_i, DF_COLS do
+        local nodes = {}
+        for j = i, math.min(i + DF_COLS - 1, end_i) do
+            nodes[#nodes + 1] = df_deck_toggle(decks[j])
+        end
+        rows[#rows + 1] = { n = G.UIT.R, config = { align = 'cm', padding = 0.01 }, nodes = nodes }
+    end
+    if #rows == 0 then
+        rows[1] = { n = G.UIT.R, config = { align = 'cm', padding = 0.04 }, nodes = {
+            { n = G.UIT.T, config = { text = 'No decks installed.', scale = 0.3, colour = G.C.UI.TEXT_LIGHT } },
+        } }
+    end
+    return { n = G.UIT.ROOT, config = { align = 'cm', padding = 0.03, colour = G.C.CLEAR }, nodes = rows }
+end
+
 if df_mod then
+    -- Page 1: controls.
     df_mod.config_tab = function()
         df_refresh_summary()
         local function btn(label, func, colour)
@@ -228,11 +280,27 @@ if df_mod then
                 } },
                 { n = G.UIT.R, config = { align = 'cm', padding = 0.04 }, nodes = {
                     { n = G.UIT.T, config = {
-                        text = 'Randomize picks 3 to 8 decks. Then play Deck Fixer.',
+                        text = 'Randomize picks 3 to 8 decks. Toggle individual decks in the Decks tabs.',
                         scale = 0.3, colour = G.C.UI.TEXT_LIGHT,
                     } },
                 } },
             },
         }
+    end
+
+    -- Pages 2..N: one tab per page of deck toggles.
+    df_mod.extra_tabs = function()
+        local decks = df_deck_centers()
+        local pages = math.max(1, math.ceil(#decks / DF_PER_PAGE))
+        local tabs = {}
+        for p = 1, pages do
+            local lo = (p - 1) * DF_PER_PAGE + 1
+            local hi = math.min(p * DF_PER_PAGE, #decks)
+            tabs[#tabs + 1] = {
+                label = ('Decks %d-%d'):format(lo, hi),
+                tab_definition_function = function() return df_deck_page(p) end,
+            }
+        end
+        return tabs
     end
 end
