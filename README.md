@@ -45,6 +45,7 @@ Bean's brief was "doesn't have to work with everything," and this is scoped to m
 - **Self-gating decks can't merge.** Some mods gate their behaviour on "is my deck the selected one" (checking `G.GAME.selected_back`). Those self-disable when merged, because the selected deck is Deck Fixer. This is inherent to any deck merger, not specific to this mod.
 - **Name-gated scoring effects** merge only where re-implemented. **Plasma** (chips/mult equalize) is handled; **Anaglyph**'s post-boss double-tag is not.
 - If several `calculate`-based decks are merged, the first to return a result for a given context wins.
+- **Select All can combine mutually-incompatible decks.** A deck whose `apply` queues a deferred effect assuming it is the only deck (e.g. Silly Decks' Confused Deck, which rewrites every card's suit) can clash with another or with itself and error. Those events run outside the per-deck `pcall`, so Deck Fixer cannot catch all of them; it does guard the common case (a change to an unregistered suit is skipped instead of crashing). Prefer **Randomize** or hand-picking over Select All for large modded collections.
 - A deck that **hard-sets** an absolute value (e.g. forces a specific starting dollar amount) will overwrite rather than add.
 - Merging is applied on a **new run**. Continuing a save uses whatever was baked in when the run started.
 - The deck art is a placeholder for now.

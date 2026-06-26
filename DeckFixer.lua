@@ -62,6 +62,13 @@ local function df_deck_enabled(key)
     return df_cfg().decks[key] == true
 end
 
+-- Is Deck Fixer the currently selected deck?
+local function df_active()
+    local sb = G.GAME and G.GAME.selected_back
+    local center = sb and sb.effect and sb.effect.center
+    return center and center.key == DF_KEY or false
+end
+
 -- Ticked decks that actually exist and are not Deck Fixer itself.
 local function df_enabled_decks()
     local out = {}
@@ -164,6 +171,26 @@ SMODS.Back({
         end
     end,
 })
+
+----------------------------------------------------------------------
+-- Crash guard: invalid suit changes
+--
+-- Some merged decks rewrite card suits in deferred events that assume
+-- they are the only deck (e.g. Silly Decks' Confused Deck double-prefixes
+-- a suit into "sdecks_sdecks_Hearts??"). Those events run outside our
+-- apply pcall, and Card:change_suit crashes on an unregistered suit
+-- (card.lua indexes SMODS.Suits[new_suit].card_key). While Deck Fixer is
+-- the active deck, skip a change to a suit that does not exist so a bad
+-- deck combination degrades to a no-op instead of taking down the run.
+----------------------------------------------------------------------
+local df_orig_change_suit = Card.change_suit
+function Card:change_suit(new_suit, ...)
+    if df_active() and new_suit and SMODS and SMODS.Suits and not SMODS.Suits[new_suit] then
+        df_log('skipped invalid suit change: ' .. tostring(new_suit))
+        return
+    end
+    return df_orig_change_suit(self, new_suit, ...)
+end
 
 ----------------------------------------------------------------------
 -- Config tab: simple Clear / Randomize / Select-All controls
