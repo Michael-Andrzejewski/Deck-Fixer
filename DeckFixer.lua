@@ -121,6 +121,34 @@ SMODS.Back({
         -- counter) starts fresh instead of carrying over from a prior run.
         for k in pairs(df_back_cache) do df_back_cache[k] = nil end
 
+        -- Merge-hostile decks queue deferred events in their apply that
+        -- assume a vanilla starting deck (e.g. Silly Decks' Discovered
+        -- loops over G.playing_cards expecting exactly 12 faces; others
+        -- mass-remove cards). Those events run after apply_to_run returns,
+        -- outside the pcall below, so a crash there is fatal. While we
+        -- merge, wrap E_MANAGER.add_event so every event a deck queues has
+        -- its func pcall-guarded: an error logs and completes the event
+        -- instead of taking down the run. Restored right after, so normal
+        -- gameplay events are untouched.
+        local mgr = G.E_MANAGER
+        local orig_add = mgr and mgr.add_event
+        if orig_add then
+            mgr.add_event = function(self_mgr, event, ...)
+                if event and type(event.func) == 'function' then
+                    local inner = event.func
+                    event.func = function(...)
+                        local ok, ret = pcall(inner, ...)
+                        if not ok then
+                            df_log('merged-deck event errored (skipped): ' .. tostring(ret))
+                            return true
+                        end
+                        return ret
+                    end
+                end
+                return orig_add(self_mgr, event, ...)
+            end
+        end
+
         -- Run each ticked deck's real application path on its own cached
         -- Back, the same instance its calculate() will later receive, so
         -- apply() and calculate() share one config. apply_to_run handles
@@ -136,6 +164,8 @@ SMODS.Back({
                 end
             end
         end
+
+        if orig_add then mgr.add_event = orig_add end
     end,
 
     calculate = function(self, back, context)
