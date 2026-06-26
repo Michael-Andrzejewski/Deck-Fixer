@@ -74,6 +74,21 @@ local function df_enabled_decks()
     return out
 end
 
+-- A real Back instance per ticked deck, cached by key. Many deck
+-- calculate() functions read their increment/value from
+-- back.effect.config (e.g. Ruina's Hod uses back.effect.config.mult), so
+-- when we chain a deck's calculate we must pass ITS own Back, not Deck
+-- Fixer's (whose config is empty). Back(center) copies the center config.
+local df_back_cache = {}
+local function df_deck_back(center)
+    local b = df_back_cache[center.key]
+    if not b then
+        b = Back(center)
+        df_back_cache[center.key] = b
+    end
+    return b
+end
+
 ----------------------------------------------------------------------
 -- Atlas + Deck
 ----------------------------------------------------------------------
@@ -124,7 +139,9 @@ SMODS.Back({
             if center then
                 local ok, ret
                 if type(center.calculate) == 'function' then
-                    ok, ret = pcall(function() return center.calculate(center, back, context) end)
+                    -- Pass the deck's OWN Back so back.effect.config reads
+                    -- the deck's config, not Deck Fixer's empty one.
+                    ok, ret = pcall(function() return center.calculate(center, df_deck_back(center), context) end)
                 elseif type(center.trigger_effect) == 'function' then
                     ok, ret = pcall(function() return center.trigger_effect(center, context) end)
                 end
