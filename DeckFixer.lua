@@ -109,15 +109,20 @@ SMODS.Back({
     unlocked = true,
 
     apply = function(self)
-        -- Run each ticked deck's real application path. Back(center)
-        -- copies the center's config; apply_to_run handles all config
-        -- fields, the deck's own apply(), and name-gated vanilla cases.
+        -- New run: drop cached deck Backs so any deck that mutates its
+        -- back.effect.config across rounds (e.g. Too Many Decks' ballot
+        -- counter) starts fresh instead of carrying over from a prior run.
+        for k in pairs(df_back_cache) do df_back_cache[k] = nil end
+
+        -- Run each ticked deck's real application path on its own cached
+        -- Back, the same instance its calculate() will later receive, so
+        -- apply() and calculate() share one config. apply_to_run handles
+        -- all config fields, the deck's apply(), and name-gated cases.
         for _, key in ipairs(df_enabled_decks()) do
             local center = G.P_CENTERS[key]
             if center then
                 local ok, err = pcall(function()
-                    local deck_back = Back(center)
-                    deck_back:apply_to_run()
+                    df_deck_back(center):apply_to_run()
                 end)
                 if not ok then
                     df_log(('deck %s failed to merge: %s'):format(key, tostring(err)))
