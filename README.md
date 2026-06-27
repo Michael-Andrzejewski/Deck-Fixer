@@ -39,7 +39,7 @@ git clone https://github.com/Michael-Andrzejewski/Deck-Fixer.git DeckFixer
 ```
 
 ## Known limitations (v1)
-- **Name-gated scoring effects** merge only where re-implemented. **Plasma** (chips/mult equalize) is handled; **Anaglyph**'s post-boss double-tag is not.
+- **Name-gated scoring effects** merge only where re-implemented. **Plasma** (chips/mult equalize) and **Anaglyph** (post-boss Double tag) are both handled. Other name-gated decks fall back to whatever their config can express.
 - If several `calculate`-based decks are merged, the first to return a result for a given context wins.
 - **Select All can combine mutually-incompatible decks.** A deck whose `apply` queues a deferred effect assuming it is the only deck (e.g. Silly Decks' Confused Deck rewriting every suit, or Discovered Deck looping over the deck expecting exactly 12 face cards) can clash with another or with itself. Deck Fixer guards this two ways: deferred events queued during a deck's apply *or* its scoring `calculate` are `pcall`-wrapped (a crashing event logs and completes instead of taking down the run), and invalid suit changes are skipped. These cover the common cases, but a merged deck left in a half-applied state may still behave oddly. Prefer **Randomize** or hand-picking over Select All for large modded collections.
 - A deck that **hard-sets** an absolute value (e.g. forces a specific starting dollar amount) will overwrite rather than add.
