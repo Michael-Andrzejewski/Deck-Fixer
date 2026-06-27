@@ -252,6 +252,18 @@ SMODS.Back({
         end)
         if result then return result end
 
+        -- Anaglyph (name-gated in vanilla): a Double tag after each boss.
+        -- Side effect only, no return, so it coexists with other decks.
+        if df_deck_enabled('b_anaglyph') and context.context == 'eval'
+           and G.GAME.last_blind and G.GAME.last_blind.boss then
+            G.E_MANAGER:add_event(Event({ func = function()
+                add_tag(Tag('tag_double'))
+                play_sound('generic1', 0.9 + math.random() * 0.1, 0.8)
+                play_sound('holo1', 1.2 + math.random() * 0.1, 0.4)
+                return true
+            end }))
+        end
+
         -- Plasma equalize (name-gated in vanilla) when Plasma is ticked.
         if df_deck_enabled('b_plasma') and context.context == 'final_scoring_step' then
             local tot  = (context.chips or 0) + (context.mult or 0)
