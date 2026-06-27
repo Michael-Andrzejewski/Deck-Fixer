@@ -62,6 +62,22 @@ local function df_deck_enabled(key)
     return df_cfg().decks[key] == true
 end
 
+-- Mods whose decks must NOT be merged. The Multiplayer mod's decks
+-- (Gradient, Violet, Cocktail, ...) are PvP-special: they install global
+-- Card-method hooks gated on a flag their apply() sets, which then run
+-- during normal gameplay outside Deck Fixer's control and crash on cards
+-- they do not expect (e.g. Gradient's calculate_joker does arithmetic on
+-- card.base.id, nil for a Joker). Not applying them keeps the hooks
+-- dormant. Add other hook-installing mods here as they turn up.
+local DF_EXCLUDED_MODS = { Multiplayer = true }
+
+-- Can this deck be safely merged?
+local function df_mergeable(center)
+    if not (center and center.key) or center.key == DF_KEY then return false end
+    if center.mod and center.mod.id and DF_EXCLUDED_MODS[center.mod.id] then return false end
+    return true
+end
+
 -- Is Deck Fixer the currently selected deck?
 local function df_active()
     local sb = G.GAME and G.GAME.selected_back
@@ -101,11 +117,11 @@ local function df_with_guarded_events(fn)
     return ok and ret or nil
 end
 
--- Ticked decks that actually exist and are not Deck Fixer itself.
+-- Ticked decks that are real, mergeable, and not Deck Fixer itself.
 local function df_enabled_decks()
     local out = {}
     for key, on in pairs(df_cfg().decks) do
-        if on and key ~= DF_KEY and G.P_CENTERS and G.P_CENTERS[key] then
+        if on and G.P_CENTERS and df_mergeable(G.P_CENTERS[key]) then
             out[#out + 1] = key
         end
     end
@@ -246,11 +262,11 @@ end
 
 local df_ui = { summary = 'Selected: 0 decks' }
 
--- Keys of every registered back except Deck Fixer itself.
+-- Keys of every mergeable registered back.
 local function df_all_deck_keys()
     local keys = {}
     for _, center in ipairs(G.P_CENTER_POOLS.Back or {}) do
-        if center.key and center.key ~= DF_KEY then keys[#keys + 1] = center.key end
+        if df_mergeable(center) then keys[#keys + 1] = center.key end
     end
     return keys
 end
@@ -324,11 +340,11 @@ end
 local DF_PER_PAGE = 18   -- deck toggles per page (3 columns x 6 rows)
 local DF_COLS     = 3
 
--- All deck centers except Deck Fixer, sorted by display name.
+-- All mergeable deck centers, sorted by display name.
 local function df_deck_centers()
     local decks = {}
     for _, center in ipairs(G.P_CENTER_POOLS.Back or {}) do
-        if center.key and center.key ~= DF_KEY then decks[#decks + 1] = center end
+        if df_mergeable(center) then decks[#decks + 1] = center end
     end
     table.sort(decks, function(a, b) return df_deck_name(a) < df_deck_name(b) end)
     return decks
