@@ -57,7 +57,7 @@ Vetted against these popular deck packs (109 decks total). The large majority me
 | Shenanigans's Decks | 31 | All merge (Hieroglyph loses only its sleeve-paired bonus) |
 | Silly Decks | 14 | Merge, except **Casino** (needs a run-start snapshot) |
 | Ruina Decks | 9 | Merge, except **Hokma** (Lovely patch gated on selection) |
-| Joshi's Decks | 8 | Merge, except **Legendary** (selection-gated hooks) |
-| Too Many Decks | 42 | Merge, except **invisible, throwback, champ** and the gated parts of **tds, Joker, thereisnogod** |
+| Joshi's Decks | 8 | All merge (**Legendary**'s Showman + legendary weighting re-implemented) |
+| Too Many Decks | 42 | Merge, except **invisible, throwback, champ, tds, thereisnogod** (**Joker**'s free Jokers/Buffoons re-implemented) |
 
 Decks that hard-set a shop rate or rarity (e.g. some of Joshi's) overwrite rather than stack when combined with each other.

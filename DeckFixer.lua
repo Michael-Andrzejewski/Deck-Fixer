@@ -117,21 +117,23 @@ local function df_with_guarded_events(fn)
     return ok and ret or nil
 end
 
--- Synchronous-hook guard. Some merged decks (notably the Multiplayer
--- mod's) install global Card method overrides that run during normal
--- gameplay -- outside the deferred-event guard -- and crash on cards they
--- do not expect (Gradient's calculate_joker does arithmetic on
--- card.base.id, which is nil for a Joker). Wrap those methods so that,
--- while Deck Fixer is the active deck, an error is caught and the hook is
--- skipped instead of crashing the run. Installed lazily at run start so
--- our wrapper sits on top of every mod's override regardless of load
--- order. Only the listed gameplay-logic methods are wrapped (not the
--- per-frame update) to keep overhead negligible.
-local DF_GUARDED_METHODS = { 'calculate_joker', 'is_face', 'set_cost' }
-local df_methods_wrapped = false
-local function df_wrap_card_methods()
-    if df_methods_wrapped then return end
-    df_methods_wrapped = true
+-- Lazy hook installation, done at run start so our wrappers sit on top of
+-- every mod's override regardless of load order. Covers three things:
+--   1. Crash guards on global Card methods that merged decks override and
+--      that run outside the deferred-event guard (the Multiplayer mod's
+--      Gradient does arithmetic on card.base.id, nil for a Joker).
+--   2. Too Many Decks' Joker deck: free Jokers and Buffoon packs (its own
+--      set_cost gate keys off being the selected deck, which we are not).
+--   3. Joshi's Legendary deck: permanent Showman (its SMODS.showman
+--      override keys off the selected deck).
+-- All behaviour is gated on df_active() so non-Deck-Fixer runs are untouched.
+local DF_GUARDED_METHODS = { 'calculate_joker', 'is_face' }
+local df_hooks_installed = false
+local function df_install_hooks()
+    if df_hooks_installed then return end
+    df_hooks_installed = true
+
+    -- 1. Generic crash guards.
     for _, name in ipairs(DF_GUARDED_METHODS) do
         local orig = Card[name]
         if type(orig) == 'function' then
@@ -142,6 +144,32 @@ local function df_wrap_card_methods()
                 df_log(('Card:%s errored (skipped): %s'):format(name, tostring(a)))
                 return nil
             end
+        end
+    end
+
+    -- 2. set_cost: crash-guarded, plus TMD Joker free Jokers / Buffoon packs.
+    local orig_set_cost = Card.set_cost
+    if type(orig_set_cost) == 'function' then
+        Card.set_cost = function(self, ...)
+            if not df_active() then return orig_set_cost(self, ...) end
+            local ok, ret = pcall(orig_set_cost, self, ...)
+            if not ok then df_log('Card:set_cost errored (skipped): ' .. tostring(ret)) end
+            if df_deck_enabled('b_SGTMD_Joker') and self.ability then
+                if self.ability.set == 'Joker'
+                   or (self.ability.set == 'Booster' and self.ability.name and self.ability.name:find('Buffoon')) then
+                    self.cost = 0
+                end
+            end
+            return ret
+        end
+    end
+
+    -- 3. Joshi's Legendary: permanent Showman while it is ticked.
+    if SMODS.showman then
+        local orig_showman = SMODS.showman
+        SMODS.showman = function(...)
+            if df_active() and df_deck_enabled('b_JoDe_legendary') then return true end
+            return orig_showman(...)
         end
     end
 end
@@ -193,14 +221,30 @@ SMODS.Back({
     unlocked = true,
 
     apply = function(self)
-        -- Install the synchronous-hook guard now that every mod is loaded,
-        -- so our wrapper sits on top of merged decks' global Card overrides.
-        df_wrap_card_methods()
+        -- Install our global hooks now that every mod is loaded, so our
+        -- wrappers sit on top of merged decks' overrides.
+        df_install_hooks()
 
         -- New run: drop cached deck Backs so any deck that mutates its
         -- back.effect.config across rounds (e.g. Too Many Decks' ballot
         -- counter) starts fresh instead of carrying over from a prior run.
         for k in pairs(df_back_cache) do df_back_cache[k] = nil end
+
+        -- Joshi's Legendary deck makes only Legendary Jokers appear by
+        -- bumping the legendary rarity weight. Its own start_run hook resets
+        -- that weight to 0 whenever it is NOT the selected deck (i.e. always,
+        -- under Deck Fixer), so re-apply it in a deferred event that runs
+        -- after start_run finishes. The deck's apply() (config + bans) is
+        -- already handled by the merge below.
+        if df_deck_enabled('b_JoDe_legendary') then
+            G.E_MANAGER:add_event(Event({ func = function()
+                local jt = SMODS.ObjectTypes and SMODS.ObjectTypes['Joker']
+                if jt and jt.rarities and jt.rarities[4] then
+                    jt.rarities[4].weight = 100
+                end
+                return true
+            end }))
+        end
 
         -- Run each ticked deck's real application path on its own cached
         -- Back, the same instance its calculate() will later receive, so
