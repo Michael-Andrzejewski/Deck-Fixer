@@ -39,10 +39,6 @@ git clone https://github.com/Michael-Andrzejewski/Deck-Fixer.git DeckFixer
 ```
 
 ## Known limitations (v1)
-
-Bean's brief was "doesn't have to work with everything," and this is scoped to match.
-
-- **Self-gating decks can't merge.** Some mods gate their behaviour on "is my deck the selected one" (checking `G.GAME.selected_back`). Those self-disable when merged, because the selected deck is Deck Fixer. This is inherent to any deck merger, not specific to this mod.
 - **Name-gated scoring effects** merge only where re-implemented. **Plasma** (chips/mult equalize) is handled; **Anaglyph**'s post-boss double-tag is not.
 - If several `calculate`-based decks are merged, the first to return a result for a given context wins.
 - **Select All can combine mutually-incompatible decks.** A deck whose `apply` queues a deferred effect assuming it is the only deck (e.g. Silly Decks' Confused Deck rewriting every suit, or Discovered Deck looping over the deck expecting exactly 12 face cards) can clash with another or with itself. Deck Fixer guards this two ways: deferred events queued during a deck's apply *or* its scoring `calculate` are `pcall`-wrapped (a crashing event logs and completes instead of taking down the run), and invalid suit changes are skipped. These cover the common cases, but a merged deck left in a half-applied state may still behave oddly. Prefer **Randomize** or hand-picking over Select All for large modded collections.
