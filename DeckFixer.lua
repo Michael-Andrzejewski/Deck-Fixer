@@ -69,6 +69,38 @@ local function df_active()
     return center and center.key == DF_KEY or false
 end
 
+-- Run fn() with E_MANAGER.add_event temporarily wrapped so any event a
+-- merged deck queues -- whether in its apply or its calculate -- has its
+-- func pcall-guarded. Wrapping at queue time bakes the guard into the
+-- event, so it is protected whenever it later runs (apply events run
+-- after run-start; calculate events run during scoring animation).
+-- Restored immediately after fn so normal gameplay events are untouched.
+-- Returns fn's return value (nil if fn errored synchronously).
+local function df_with_guarded_events(fn)
+    local mgr = G.E_MANAGER
+    local orig_add = mgr and mgr.add_event
+    if orig_add then
+        mgr.add_event = function(self_mgr, event, ...)
+            if event and type(event.func) == 'function' then
+                local inner = event.func
+                event.func = function(...)
+                    local ok, ret = pcall(inner, ...)
+                    if not ok then
+                        df_log('merged-deck event errored (skipped): ' .. tostring(ret))
+                        return true  -- complete the event so it does not retry
+                    end
+                    return ret
+                end
+            end
+            return orig_add(self_mgr, event, ...)
+        end
+    end
+    local ok, ret = pcall(fn)
+    if orig_add then mgr.add_event = orig_add end
+    if not ok then df_log('guarded block errored: ' .. tostring(ret)) end
+    return ok and ret or nil
+end
+
 -- Ticked decks that actually exist and are not Deck Fixer itself.
 local function df_enabled_decks()
     local out = {}
@@ -121,51 +153,25 @@ SMODS.Back({
         -- counter) starts fresh instead of carrying over from a prior run.
         for k in pairs(df_back_cache) do df_back_cache[k] = nil end
 
-        -- Merge-hostile decks queue deferred events in their apply that
-        -- assume a vanilla starting deck (e.g. Silly Decks' Discovered
-        -- loops over G.playing_cards expecting exactly 12 faces; others
-        -- mass-remove cards). Those events run after apply_to_run returns,
-        -- outside the pcall below, so a crash there is fatal. While we
-        -- merge, wrap E_MANAGER.add_event so every event a deck queues has
-        -- its func pcall-guarded: an error logs and completes the event
-        -- instead of taking down the run. Restored right after, so normal
-        -- gameplay events are untouched.
-        local mgr = G.E_MANAGER
-        local orig_add = mgr and mgr.add_event
-        if orig_add then
-            mgr.add_event = function(self_mgr, event, ...)
-                if event and type(event.func) == 'function' then
-                    local inner = event.func
-                    event.func = function(...)
-                        local ok, ret = pcall(inner, ...)
-                        if not ok then
-                            df_log('merged-deck event errored (skipped): ' .. tostring(ret))
-                            return true
-                        end
-                        return ret
-                    end
-                end
-                return orig_add(self_mgr, event, ...)
-            end
-        end
-
         -- Run each ticked deck's real application path on its own cached
         -- Back, the same instance its calculate() will later receive, so
         -- apply() and calculate() share one config. apply_to_run handles
         -- all config fields, the deck's apply(), and name-gated cases.
-        for _, key in ipairs(df_enabled_decks()) do
-            local center = G.P_CENTERS[key]
-            if center then
-                local ok, err = pcall(function()
-                    df_deck_back(center):apply_to_run()
-                end)
-                if not ok then
-                    df_log(('deck %s failed to merge: %s'):format(key, tostring(err)))
+        -- Deferred events these apply()s queue are guarded (merge-hostile
+        -- decks like Silly's Discovered crash assuming a vanilla deck).
+        df_with_guarded_events(function()
+            for _, key in ipairs(df_enabled_decks()) do
+                local center = G.P_CENTERS[key]
+                if center then
+                    local ok, err = pcall(function()
+                        df_deck_back(center):apply_to_run()
+                    end)
+                    if not ok then
+                        df_log(('deck %s failed to merge: %s'):format(key, tostring(err)))
+                    end
                 end
             end
-        end
-
-        if orig_add then mgr.add_event = orig_add end
+        end)
     end,
 
     calculate = function(self, back, context)
@@ -175,21 +181,28 @@ SMODS.Back({
         -- deprecated center.trigger_effect (different arity: it takes
         -- (center, args), not (center, back, args)). Some modded decks
         -- (e.g. Silly Decks' Busted) still use trigger_effect, so we
-        -- mirror that fallback here.
-        for _, key in ipairs(df_enabled_decks()) do
-            local center = G.P_CENTERS[key]
-            if center then
-                local ok, ret
-                if type(center.calculate) == 'function' then
-                    -- Pass the deck's OWN Back so back.effect.config reads
-                    -- the deck's config, not Deck Fixer's empty one.
-                    ok, ret = pcall(function() return center.calculate(center, df_deck_back(center), context) end)
-                elseif type(center.trigger_effect) == 'function' then
-                    ok, ret = pcall(function() return center.trigger_effect(center, context) end)
+        -- mirror that fallback here. Wrapped so events a deck's calculate
+        -- queues (e.g. Silly's Herculean re-bases scored cards in a
+        -- deferred event that can hit a suitless card) can't crash the run.
+        local result
+        df_with_guarded_events(function()
+            for _, key in ipairs(df_enabled_decks()) do
+                local center = G.P_CENTERS[key]
+                if center then
+                    local ok, ret
+                    if type(center.calculate) == 'function' then
+                        -- Pass the deck's OWN Back so back.effect.config
+                        -- reads the deck's config, not Deck Fixer's empty one.
+                        ok, ret = pcall(function() return center.calculate(center, df_deck_back(center), context) end)
+                    elseif type(center.trigger_effect) == 'function' then
+                        ok, ret = pcall(function() return center.trigger_effect(center, context) end)
+                    end
+                    if ok and ret then result = ret; return end
                 end
-                if ok and ret then return ret end
             end
-        end
+        end)
+        if result then return result end
+
         -- Plasma equalize (name-gated in vanilla) when Plasma is ticked.
         if df_deck_enabled('b_plasma') and context.context == 'final_scoring_step' then
             local tot  = (context.chips or 0) + (context.mult or 0)
