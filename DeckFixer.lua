@@ -62,19 +62,19 @@ local function df_deck_enabled(key)
     return df_cfg().decks[key] == true
 end
 
--- Mods whose decks must NOT be merged. The Multiplayer mod's decks
--- (Gradient, Violet, Cocktail, ...) are PvP-special: they install global
--- Card-method hooks gated on a flag their apply() sets, which then run
--- during normal gameplay outside Deck Fixer's control and crash on cards
--- they do not expect (e.g. Gradient's calculate_joker does arithmetic on
--- card.base.id, nil for a Joker). Not applying them keeps the hooks
--- dormant. Add other hook-installing mods here as they turn up.
-local DF_EXCLUDED_MODS = { Multiplayer = true }
+-- Decks excluded from merging, matched by key substring. Cocktail is the
+-- Multiplayer mod's own deck-merger; nesting a merger inside Deck Fixer is
+-- recursive and behaves strangely, so it stays out. Other Multiplayer
+-- decks (Gradient, Violet, ...) ARE mergeable; their global hooks are
+-- kept non-fatal by df_wrap_card_methods below.
+local DF_EXCLUDED_KEYS = { 'cocktail' }
 
 -- Can this deck be safely merged?
 local function df_mergeable(center)
     if not (center and center.key) or center.key == DF_KEY then return false end
-    if center.mod and center.mod.id and DF_EXCLUDED_MODS[center.mod.id] then return false end
+    for _, frag in ipairs(DF_EXCLUDED_KEYS) do
+        if center.key:find(frag, 1, true) then return false end
+    end
     return true
 end
 
@@ -115,6 +115,35 @@ local function df_with_guarded_events(fn)
     if orig_add then mgr.add_event = orig_add end
     if not ok then df_log('guarded block errored: ' .. tostring(ret)) end
     return ok and ret or nil
+end
+
+-- Synchronous-hook guard. Some merged decks (notably the Multiplayer
+-- mod's) install global Card method overrides that run during normal
+-- gameplay -- outside the deferred-event guard -- and crash on cards they
+-- do not expect (Gradient's calculate_joker does arithmetic on
+-- card.base.id, which is nil for a Joker). Wrap those methods so that,
+-- while Deck Fixer is the active deck, an error is caught and the hook is
+-- skipped instead of crashing the run. Installed lazily at run start so
+-- our wrapper sits on top of every mod's override regardless of load
+-- order. Only the listed gameplay-logic methods are wrapped (not the
+-- per-frame update) to keep overhead negligible.
+local DF_GUARDED_METHODS = { 'calculate_joker', 'is_face', 'set_cost' }
+local df_methods_wrapped = false
+local function df_wrap_card_methods()
+    if df_methods_wrapped then return end
+    df_methods_wrapped = true
+    for _, name in ipairs(DF_GUARDED_METHODS) do
+        local orig = Card[name]
+        if type(orig) == 'function' then
+            Card[name] = function(self, ...)
+                if not df_active() then return orig(self, ...) end
+                local ok, a, b = pcall(orig, self, ...)
+                if ok then return a, b end
+                df_log(('Card:%s errored (skipped): %s'):format(name, tostring(a)))
+                return nil
+            end
+        end
+    end
 end
 
 -- Ticked decks that are real, mergeable, and not Deck Fixer itself.
@@ -164,6 +193,10 @@ SMODS.Back({
     unlocked = true,
 
     apply = function(self)
+        -- Install the synchronous-hook guard now that every mod is loaded,
+        -- so our wrapper sits on top of merged decks' global Card overrides.
+        df_wrap_card_methods()
+
         -- New run: drop cached deck Backs so any deck that mutates its
         -- back.effect.config across rounds (e.g. Too Many Decks' ballot
         -- counter) starts fresh instead of carrying over from a prior run.
