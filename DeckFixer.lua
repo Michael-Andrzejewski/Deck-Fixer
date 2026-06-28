@@ -201,6 +201,21 @@ local function df_deck_back(center)
     return b
 end
 
+-- Display name for a deck. Most modded backs store their name only in
+-- localization, so try that first, then the center's name field, then
+-- the raw key as a last resort.
+local function df_deck_name(center_or_key)
+    local center = type(center_or_key) == 'table' and center_or_key or G.P_CENTERS[center_or_key]
+    local key = (type(center_or_key) == 'string') and center_or_key or (center and center.key)
+    if not key then return tostring(center_or_key) end
+    local ok, nm = pcall(function() return localize({ type = 'name_text', set = 'Back', key = key }) end)
+    if ok and type(nm) == 'string' and nm ~= '' and nm ~= 'ERROR' and not nm:match('^b_') then
+        return nm
+    end
+    if center and center.name and center.name ~= '' then return center.name end
+    return key
+end
+
 ----------------------------------------------------------------------
 -- Atlas + Deck
 ----------------------------------------------------------------------
@@ -219,6 +234,37 @@ SMODS.Back({
     pos = { x = 0, y = 0 },
     config = {},
     unlocked = true,
+
+    -- Dynamic hover description: list the currently-selected decks. Back:
+    -- generate_UI calls loc_vars before localizing the description, so we
+    -- rebuild this deck's text (and the parsed cache) from the live config
+    -- each time it is shown. Capped so a huge Select-All stays readable.
+    loc_vars = function(self, info_queue, card)
+        local sel = df_enabled_decks()
+        local lines = {}
+        if #sel == 0 then
+            lines = { 'No decks selected.', '{C:inactive}Pick some in the mod config.{}' }
+        else
+            lines[#lines + 1] = ('{C:attention}%d{} decks merged:'):format(#sel)
+            local cap = 12
+            for i = 1, math.min(cap, #sel) do
+                lines[#lines + 1] = '{C:blue}' .. df_deck_name(sel[i]) .. '{}'
+            end
+            if #sel > cap then
+                lines[#lines + 1] = ('{C:inactive}+%d more{}'):format(#sel - cap)
+            end
+        end
+        local desc = G.localization and G.localization.descriptions
+            and G.localization.descriptions.Back and G.localization.descriptions.Back[self.key]
+        if desc and loc_parse_string then
+            desc.text = lines
+            desc.text_parsed = {}
+            for _, line in ipairs(lines) do
+                desc.text_parsed[#desc.text_parsed + 1] = loc_parse_string(line)
+            end
+        end
+        return { vars = {} }
+    end,
 
     apply = function(self)
         -- Install our global hooks now that every mod is loaded, so our
@@ -358,21 +404,6 @@ local function df_all_deck_keys()
         if df_mergeable(center) then keys[#keys + 1] = center.key end
     end
     return keys
-end
-
--- Display name for a deck. Most modded backs store their name only in
--- localization, so try that first, then the center's name field, then
--- the raw key as a last resort.
-local function df_deck_name(center_or_key)
-    local center = type(center_or_key) == 'table' and center_or_key or G.P_CENTERS[center_or_key]
-    local key = (type(center_or_key) == 'string') and center_or_key or (center and center.key)
-    if not key then return tostring(center_or_key) end
-    local ok, nm = pcall(function() return localize({ type = 'name_text', set = 'Back', key = key }) end)
-    if ok and type(nm) == 'string' and nm ~= '' and nm ~= 'ERROR' and not nm:match('^b_') then
-        return nm
-    end
-    if center and center.name and center.name ~= '' then return center.name end
-    return key
 end
 
 local function df_refresh_summary()
