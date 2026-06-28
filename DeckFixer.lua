@@ -216,6 +216,36 @@ local function df_deck_name(center_or_key)
     return key
 end
 
+-- A deck's own effect description, as plain filled lines (placeholders
+-- substituted). We best-effort the vars by calling the deck's loc_vars
+-- (most modded decks fill #1# etc. from their config there); raw text is
+-- used for the static decks. Lines that still come out as ERROR (a deck
+-- whose loc_vars needs a real card we cannot supply) are dropped, and we
+-- cap to a few lines so the merged tooltip stays compact.
+local function df_deck_effect_lines(key)
+    local center = G.P_CENTERS[key]
+    if not center then return {} end
+    local vars = {}
+    if type(center.loc_vars) == 'function' then
+        local ok, res = pcall(function() return center:loc_vars({}, center) end)
+        if ok and type(res) == 'table' and type(res.vars) == 'table' then
+            vars = res.vars
+        end
+    end
+    local ok2, multi = pcall(function()
+        return localize({ type = 'raw_descriptions', set = 'Back', key = key, vars = vars })
+    end)
+    if not ok2 or type(multi) ~= 'table' then return {} end
+    local out = {}
+    for _, line in ipairs(multi) do
+        if type(line) == 'string' and line:gsub('%s', '') ~= '' and not line:find('ERROR') then
+            out[#out + 1] = line
+            if #out >= 3 then break end
+        end
+    end
+    return out
+end
+
 ----------------------------------------------------------------------
 -- Atlas + Deck
 ----------------------------------------------------------------------
@@ -246,9 +276,12 @@ SMODS.Back({
             lines = { 'No decks selected.', '{C:inactive}Pick some in the mod config.{}' }
         else
             lines[#lines + 1] = ('{C:attention}%d{} decks merged:'):format(#sel)
-            local cap = 12
+            local cap = 5  -- each deck now lists its effect lines too
             for i = 1, math.min(cap, #sel) do
                 lines[#lines + 1] = '{C:blue}' .. df_deck_name(sel[i]) .. '{}'
+                for _, eff in ipairs(df_deck_effect_lines(sel[i])) do
+                    lines[#lines + 1] = eff
+                end
             end
             if #sel > cap then
                 lines[#lines + 1] = ('{C:inactive}+%d more{}'):format(#sel - cap)
