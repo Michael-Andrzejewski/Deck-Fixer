@@ -276,15 +276,14 @@ SMODS.Back({
             lines = { 'No decks selected.', '{C:inactive}Pick some in the mod config.{}' }
         else
             lines[#lines + 1] = ('{C:attention}%d{} decks merged:'):format(#sel)
-            local cap = 5  -- each deck now lists its effect lines too
+            -- Names only here, capped so the box never overflows. The full
+            -- per-deck effects live in the hover popup (generate_UI below).
+            local cap = 8
             for i = 1, math.min(cap, #sel) do
                 lines[#lines + 1] = '{C:blue}' .. df_deck_name(sel[i]) .. '{}'
-                for _, eff in ipairs(df_deck_effect_lines(sel[i])) do
-                    lines[#lines + 1] = eff
-                end
             end
             if #sel > cap then
-                lines[#lines + 1] = ('{C:inactive}+%d more{}'):format(#sel - cap)
+                lines[#lines + 1] = ('{C:inactive}+%d more (hover){}'):format(#sel - cap)
             end
         end
         local desc = G.localization and G.localization.descriptions
@@ -398,6 +397,43 @@ SMODS.Back({
         end
     end,
 })
+
+----------------------------------------------------------------------
+-- Hover popup: full per-deck effects
+--
+-- The main deck-select box lists names only (loc_vars above) to avoid
+-- overflow. The full per-deck effects go in a hover popup attached to the
+-- description box. A node with config.on_demand_tooltip is automatically
+-- made collideable (engine/ui.lua) and shows the tooltip on hover, auto-
+-- positioned to stay on screen. Its text strings are run through
+-- loc_parse_string, so colour codes work.
+----------------------------------------------------------------------
+local function df_effects_tooltip_text()
+    local sel = df_enabled_decks()
+    local text = {}
+    local cap = 12
+    for i = 1, math.min(cap, #sel) do
+        text[#text + 1] = '{C:blue}' .. df_deck_name(sel[i]) .. '{}'
+        for _, eff in ipairs(df_deck_effect_lines(sel[i])) do
+            text[#text + 1] = eff
+        end
+    end
+    if #sel > cap then text[#text + 1] = ('{C:inactive}+%d more{}'):format(#sel - cap) end
+    return text
+end
+
+local df_orig_back_generate_ui = Back.generate_UI
+function Back:generate_UI(...)
+    local ui = df_orig_back_generate_ui(self, ...)
+    local center = self.effect and self.effect.center
+    if ui and ui.config and center and center.key == DF_KEY then
+        local text = df_effects_tooltip_text()
+        if #text > 0 then
+            ui.config.on_demand_tooltip = { title = 'Merged deck effects', text = text }
+        end
+    end
+    return ui
+end
 
 ----------------------------------------------------------------------
 -- Crash guard: invalid suit changes
