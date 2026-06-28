@@ -117,15 +117,55 @@ local function df_with_guarded_events(fn)
     return ok and ret or nil
 end
 
+-- Self-gated deck effects, generalized.
+--
+-- A recurring pattern: a deck's effect lives in a global predicate that
+-- returns true when `G.GAME.selected_back` is that deck (Joshi Legendary's
+-- SMODS.showman, Ortalab Prismatic's suit_smear, ...). When merged, the
+-- selected deck is Deck Fixer, so those checks fail and the effect is lost.
+-- We cannot make selected_back be several decks at once, but we can extend
+-- each such predicate to ALSO return true while Deck Fixer is active and
+-- that deck is ticked. Supporting a new self-gated predicate deck is then a
+-- single entry below: `get`/`set` resolve the target lazily (so load order
+-- does not matter and a missing mod is simply skipped), `deck` is the back
+-- key, and `guard` is an optional extra condition on the call's arguments.
+local DF_GATED_PREDICATES = {
+    {
+        name = 'Joshi Legendary (Showman)',
+        deck = 'b_JoDe_legendary',
+        get  = function() return SMODS.showman end,
+        set  = function(f) SMODS.showman = f end,
+    },
+    {
+        name = 'Ortalab Prismatic (all suits)',
+        deck = 'b_ortalab_prismatic',
+        get  = function() return _G.Ortalab and Ortalab.suit_smear or nil end,
+        set  = function(f) Ortalab.suit_smear = f end,
+        guard = function(card, flush_calc) return not flush_calc end,
+    },
+}
+
+local function df_install_gated_predicates()
+    for _, p in ipairs(DF_GATED_PREDICATES) do
+        local orig = p.get()
+        if type(orig) == 'function' then
+            p.set(function(...)
+                if df_active() and df_deck_enabled(p.deck) and (not p.guard or p.guard(...)) then
+                    return true
+                end
+                return orig(...)
+            end)
+        end
+    end
+end
+
 -- Lazy hook installation, done at run start so our wrappers sit on top of
--- every mod's override regardless of load order. Covers three things:
---   1. Crash guards on global Card methods that merged decks override and
---      that run outside the deferred-event guard (the Multiplayer mod's
---      Gradient does arithmetic on card.base.id, nil for a Joker).
---   2. Too Many Decks' Joker deck: free Jokers and Buffoon packs (its own
---      set_cost gate keys off being the selected deck, which we are not).
---   3. Joshi's Legendary deck: permanent Showman (its SMODS.showman
---      override keys off the selected deck).
+-- every mod's override regardless of load order:
+--   1. Crash guards on global Card methods merged decks override that run
+--      outside the deferred-event guard (Multiplayer's Gradient).
+--   2. Too Many Decks' Joker deck: free Jokers and Buffoon packs (a set_cost
+--      mutation, so it stays bespoke rather than in the predicate registry).
+--   3. Self-gated deck predicates (see DF_GATED_PREDICATES above).
 -- All behaviour is gated on df_active() so non-Deck-Fixer runs are untouched.
 local DF_GUARDED_METHODS = { 'calculate_joker', 'is_face' }
 local df_hooks_installed = false
@@ -164,28 +204,8 @@ local function df_install_hooks()
         end
     end
 
-    -- 3. Joshi's Legendary: permanent Showman while it is ticked.
-    if SMODS.showman then
-        local orig_showman = SMODS.showman
-        SMODS.showman = function(...)
-            if df_active() and df_deck_enabled('b_JoDe_legendary') then return true end
-            return orig_showman(...)
-        end
-    end
-
-    -- 4. Ortalab's Prismatic: all cards act as all suits when scored. The
-    --    voucher half (Chisel) merges on its own; this is the deck's own
-    --    effect, which Ortalab gates on being the selected deck via
-    --    Ortalab.suit_smear. Extend it for the merged case.
-    if _G.Ortalab and type(Ortalab.suit_smear) == 'function' then
-        local orig_smear = Ortalab.suit_smear
-        Ortalab.suit_smear = function(card, flush_calc)
-            if not flush_calc and df_active() and df_deck_enabled('b_ortalab_prismatic') then
-                return true
-            end
-            return orig_smear(card, flush_calc)
-        end
-    end
+    -- 3. Self-gated deck predicates (Legendary Showman, Prismatic suit_smear).
+    df_install_gated_predicates()
 end
 
 -- Ticked decks that are real, mergeable, and not Deck Fixer itself.
