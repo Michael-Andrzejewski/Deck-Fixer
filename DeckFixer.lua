@@ -172,6 +172,20 @@ local function df_install_hooks()
             return orig_showman(...)
         end
     end
+
+    -- 4. Ortalab's Prismatic: all cards act as all suits when scored. The
+    --    voucher half (Chisel) merges on its own; this is the deck's own
+    --    effect, which Ortalab gates on being the selected deck via
+    --    Ortalab.suit_smear. Extend it for the merged case.
+    if _G.Ortalab and type(Ortalab.suit_smear) == 'function' then
+        local orig_smear = Ortalab.suit_smear
+        Ortalab.suit_smear = function(card, flush_calc)
+            if not flush_calc and df_active() and df_deck_enabled('b_ortalab_prismatic') then
+                return true
+            end
+            return orig_smear(card, flush_calc)
+        end
+    end
 end
 
 -- Ticked decks that are real, mergeable, and not Deck Fixer itself.
